@@ -69,11 +69,15 @@ COPY --from=builder --chown=nextjs:nodejs /app/public           ./public
 
 # Prisma 迁移所需：CLI + schema + migrations 历史
 # standalone trace 默认不包含 prisma CLI，需手动补齐供 entrypoint 调用
+# 注意：故意不 COPY node_modules/.bin/prisma，因为它是 symlink → ../prisma/build/index.js
+#       Docker 单文件 COPY 默认会跟随符号链接、把 build/index.js 的内容
+#       复制为 .bin/prisma 普通文件，导致 prisma CLI 启动后 __dirname 指向 .bin/，
+#       找不到同目录应有的 prisma_schema_build_bg.wasm 而 ENOENT 崩溃。
+#       entrypoint.sh 直接用 node node_modules/prisma/build/index.js 调用即可绕开。
 COPY --from=builder --chown=nextjs:nodejs /app/prisma                   ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma      ./node_modules/prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma     ./node_modules/@prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma     ./node_modules/.prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
 
 # 启动脚本：先跑 migrate deploy，再 exec 启动 server.js
 COPY --chown=nextjs:nodejs docker/entrypoint.sh /entrypoint.sh

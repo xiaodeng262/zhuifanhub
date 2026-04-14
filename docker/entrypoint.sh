@@ -11,7 +11,10 @@
 set -e
 
 echo "[entrypoint] running prisma migrate deploy ..."
-node_modules/.bin/prisma migrate deploy
+# 直接调用 prisma 入口文件，不走 node_modules/.bin/prisma 符号链接：
+# Docker 单文件 COPY symlink 时会跟随链接、把 .bin/prisma 拷成普通文件，
+# 导致 CLI 内部 __dirname 错位、找不到同目录的 prisma_schema_build_bg.wasm
+node node_modules/prisma/build/index.js migrate deploy
 
 echo "[entrypoint] starting next server ..."
 exec "$@"
