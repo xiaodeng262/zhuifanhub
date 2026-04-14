@@ -1,0 +1,212 @@
+// Prisma schema for zhuifanhub
+//
+// 设计原则：
+// - 保留现有字符串 id（资源 slug、通告/举报的人类友好 id），避免迁移时外键断链
+// - 枚举字段（category / kind / storage / status / level / reason）统一用 String 而非 Prisma enum
+//   理由：现有前端与 API 已普遍使用 kebab-case / 小写字面量，换成 Prisma enum 需要大规模 mapping，MVP 不划算
+//   类型安全由 TypeScript 侧的 `Category` / `PostKind` 等联合类型继续承担
+// - 冗余字段（authorName / uploaderName / resourceTitle / reporterName / actorName）沿用旧 store 的设计：
+//   列表页不需要 join 用户表即可直接渲染，同时避免历史数据因改名而失真
+// - 所有表都给出常用 index：列表筛选、时间倒序、未读通知查询
+//
+// 种子兼容：
+// - 旧 resources.json 里 authorId == "seed"，旧 reports.json 里 reporterId == "seed"
+// - 为此在 seed 脚本中写入一个特殊的 id="seed" 用户占位，保证外键合法
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- 用户 ----------
+
+model User {
+  id           String   @id
+  username     String   @unique
+  passwordHash String
+  role         String   @default("user") // "user" | "admin"
+  createdAt    DateTime @default(now())
+  // 注册时记录的客户端 IP；用于限制"同一 IP 重复注册"的反滥用策略
+  // 可空：seed 占位用户、历史数据、以及无法识别 IP 的极端环境保持兼容
+  registerIp   String?
+
+  resources     Resource[]     @relation("ResourceAuthor")
+  comments      Comment[]
+  collections   Collection[]
+  following     Follow[]       @relation("Follower")
+  followers     Follow[]       @relation("Followee")
+  reports       Report[]
+  notifications Notification[] @relation("NotificationRecipient")
+  actedOn       Notification[] @relation("NotificationActor")
+
+  @@index([createdAt])
+  // 注册接口热路径：按 IP 反查"是否已存在用户"，建索引避免全表扫描
+  @@index([registerIp])
+}
+
+// ---------- 资源 ----------
+
+model Resource {
+  id            String   @id
+  title         String
+  alias         String?
+  cover         String
+  category      String   // "new-anime" | "classic" | "movie" | "artwork" | "tool"
+  kind          String   // "share" | "seek"
+  tags          String[] // Postgres 原生数组，节省拆表开销
+  description   String
+  uploaderName  String   // 冗余展示用；允许与 author.username 不同（如种子数据）
+  uploaderAvatar String?
+  publishedAt   DateTime
+  // 统计三元组直接展开成列，避免嵌套 JSON 导致的累加成本
+  views         Int      @default(0)
+  downloads     Int      @default(0)
+  commentsCount Int      @default(0) // 避开与 relation comments 重名
+  year          Int?
+  bounty        Int?
+  status        String   @default("published") // "published" | "removed"
+  updatedAt     DateTime @updatedAt
+
+  authorId      String
+  author        User           @relation("ResourceAuthor", fields: [authorId], references: [id])
+
+  links         ResourceLink[]
+  comments      Comment[]
+  collections   Collection[]
+  reports       Report[]
+  notifications Notification[]
+
+  @@index([category, status, publishedAt])
+  @@index([kind, status])
+  @@index([authorId, status])
+  @@index([publishedAt])
+}
+
+// 资源外链：每条独立一行，便于未来对 storage 做统计或按 storage 过滤
+model ResourceLink {
+  id         Int      @id @default(autoincrement())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  label      String
+  url        String
+  storage    String   // "magnet" | "pan" | "online" | "site"
+  position   Int      @default(0) // 保留发布顺序
+
+  @@index([resourceId, position])
+}
+
+// ---------- 评论 ----------
+
+model Comment {
+  id         String   @id @default(uuid())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User     @relation(fields: [authorId], references: [id])
+  authorName String   // 冗余
+  body       String
+  createdAt  DateTime @default(now())
+
+  parentId String?
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  Comment[] @relation("CommentReplies")
+
+  notifications Notification[]
+
+  @@index([resourceId, createdAt])
+  @@index([parentId])
+  @@index([authorId])
+}
+
+// ---------- 收藏 ----------
+
+model Collection {
+  userId     String
+  resourceId String
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@id([userId, resourceId])
+  @@index([userId, createdAt])
+}
+
+// ---------- 关注 ----------
+
+model Follow {
+  followerId String
+  followeeId String
+  createdAt  DateTime @default(now())
+
+  follower User @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followee User @relation("Followee", fields: [followeeId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followeeId])
+  @@index([followeeId])
+}
+
+// ---------- 公告 ----------
+
+model Notice {
+  id        String   @id
+  level     String   // "pinned" | "feature" | "event" | "maintenance"
+  title     String
+  body      String
+  date      String   // 展示用日期字符串 YYYY-MM-DD
+  createdAt DateTime @default(now())
+
+  @@index([level, createdAt])
+}
+
+// ---------- 举报 / 失效反馈 ----------
+
+model Report {
+  id            String   @id
+  kind          String   // "content" | "dead"
+  resourceId    String
+  resource      Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  resourceTitle String   // 冗余：被举报资源标题
+  reporterId    String
+  reporter      User     @relation(fields: [reporterId], references: [id])
+  reporterName  String   // 冗余：举报人显示名
+  createdAt     DateTime @default(now())
+  status        String   @default("pending") // pending | processing | resolved | rejected
+  reason        String? // content 类的细分原因：ad/spam/duplicate/illegal/other
+  note          String?
+
+  @@index([kind, status, createdAt])
+  @@index([reporterId, createdAt])
+}
+
+// ---------- 通知 ----------
+
+// 业务动机：用户被回复 / 被 @ 时需要知道；MVP 只支持两种 type
+// 设计要点：
+// - recipient 与 actor 同时保留（actor 冗余 actorName），列表渲染不用 join
+// - resourceId / commentId 可空：未来扩展系统通知（公告等）可不绑定资源
+// - snippet 截取正文前 140 字符，避免通知列表渲染时加载大 body
+// - read 布尔 + 复合索引 (userId, read, createdAt)：热路径"查当前用户未读"走 index only scan
+model Notification {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  type       String   // "reply" | "mention"
+  actorId    String
+  actor      User     @relation("NotificationActor", fields: [actorId], references: [id], onDelete: Cascade)
+  actorName  String
+  resourceId String?
+  resource   Resource? @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+  commentId  String?
+  comment    Comment?  @relation(fields: [commentId], references: [id], onDelete: SetNull)
+  snippet    String
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([userId, read, createdAt])
+  @@index([userId, createdAt])
+}

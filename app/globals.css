@@ -1,0 +1,187 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * 全局主题：樱花 Pop Idol
+ * - 奶白背景 + 柔和渐变 + 点阵 + 漂浮装饰元素
+ * - 所有卡片都带圆角 + 粉色软阴影
+ */
+
+:root {
+  --milk: #fff9f3;
+  --milk-warmer: #fff0e6;
+  --plum: #2d1b3d;
+  --sakura: #ff5b97;
+  --sakura-bright: #ff3b85;
+  --sky2: #5eb4ff;
+  --lavender: #9d7bff;
+  --vanilla: #ffcc00;
+  --mint: #10d49c;
+}
+
+@layer base {
+  html,
+  body {
+    @apply bg-milk-100 text-plum-900 font-sans;
+    font-feature-settings: "kern", "palt";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    /* 主背景：奶白 + 三个柔和渐变色斑 + 细点阵 */
+    background-color: #fff9f3;
+    background-image:
+      radial-gradient(ellipse 60% 50% at 10% 0%, rgba(255, 194, 217, 0.45), transparent 60%),
+      radial-gradient(ellipse 50% 40% at 100% 20%, rgba(179, 225, 255, 0.45), transparent 60%),
+      radial-gradient(ellipse 70% 50% at 80% 100%, rgba(201, 179, 255, 0.35), transparent 60%),
+      radial-gradient(circle at 20% 80%, rgba(255, 229, 102, 0.3), transparent 50%);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+
+  /* 点阵叠层：细腻装饰纹理 */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    background-image: radial-gradient(circle, rgba(255, 91, 151, 0.08) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  ::selection {
+    background: var(--sakura);
+    color: white;
+  }
+
+  /* 自定义滚动条 */
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #fff0e6;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #ffc2d9;
+    border-radius: 6px;
+    border: 2px solid #fff0e6;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #ff9ec0;
+  }
+}
+
+@layer components {
+  /* 小圆点标记：次级小标题 */
+  .marker {
+    @apply font-mono text-[11px] uppercase tracking-[0.25em] text-sakura-600 inline-flex items-center gap-2;
+  }
+  .marker::before {
+    content: "";
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background: var(--sakura);
+    border-radius: 9999px;
+  }
+
+  /* 樱花粉主按钮：胶囊 + 硬边阴影（像贴纸） */
+  .btn-sakura {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3
+           bg-sakura-500 text-white font-bold
+           rounded-full border-[3px] border-plum-900
+           shadow-pop
+           transition-all duration-200
+           hover:bg-sakura-600 hover:-translate-y-0.5 hover:-translate-x-0.5
+           hover:shadow-[6px_6px_0_0_#2d1b3d]
+           active:translate-y-0 active:translate-x-0 active:shadow-[2px_2px_0_0_#2d1b3d];
+  }
+
+  /* 空心轮廓按钮 */
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3
+           bg-white text-plum-900 font-bold
+           rounded-full border-[3px] border-plum-900
+           shadow-pop
+           transition-all duration-200
+           hover:-translate-y-0.5 hover:-translate-x-0.5
+           hover:shadow-[6px_6px_0_0_#2d1b3d]
+           active:translate-y-0 active:translate-x-0 active:shadow-[2px_2px_0_0_#2d1b3d];
+  }
+
+  /* 表单输入框：与 bubble 卡片风格一致的可编辑字段 */
+  .field-input {
+    @apply w-full rounded-2xl border-[3px] border-plum-900 bg-white
+           px-4 py-2.5 font-display text-sm text-plum-900
+           placeholder:text-plum-500/40
+           transition-colors
+           focus:border-sakura-500 focus:outline-none;
+  }
+
+  /* 通用卡片：白底 + 圆角 + 粉色软阴影 */
+  .bubble {
+    @apply bg-white rounded-[28px] border-2 border-plum-900/10
+           shadow-sakuraSoft transition-all duration-300;
+  }
+  .bubble-hover:hover {
+    @apply -translate-y-1 shadow-sakura border-sakura-300;
+  }
+
+  /* 标签芯片：胶囊圆角 */
+  .chip {
+    @apply inline-flex items-center gap-1 px-3 py-1
+           font-display text-xs font-bold
+           bg-milk-200 text-plum-700
+           rounded-full border-2 border-plum-900/10
+           hover:bg-sakura-100 hover:border-sakura-300 hover:text-sakura-700
+           transition-colors;
+  }
+
+  /* 标签芯片（彩色变体） */
+  .chip-pink {
+    @apply bg-sakura-100 border-sakura-300 text-sakura-700;
+  }
+  .chip-blue {
+    @apply bg-sky2-100 border-sky2-400/40 text-sky2-600;
+  }
+  .chip-lavender {
+    @apply bg-lavender-100 border-lavender-300 text-lavender-700;
+  }
+  .chip-yellow {
+    @apply bg-vanilla-100 border-vanilla-300 text-vanilla-700;
+  }
+
+  /* 内容 z-index 需要高于装饰层 */
+  .stack {
+    position: relative;
+    z-index: 2;
+  }
+
+  /* 星星装饰：可直接放在任意位置 */
+  .sparkle {
+    @apply inline-block text-sakura-400;
+    filter: drop-shadow(0 2px 4px rgba(255, 91, 151, 0.3));
+  }
+
+  /* 分隔横线：波浪点虚 */
+  .divider-dotted {
+    background-image: radial-gradient(circle, #ff9ec0 2px, transparent 2px);
+    background-size: 12px 4px;
+    background-repeat: repeat-x;
+    background-position: center;
+    height: 4px;
+    border: none;
+  }
+
+  /* 输入框：圆角 + 粉色 focus */
+  .input {
+    @apply w-full bg-white rounded-2xl border-2 border-plum-900/15
+           px-4 py-3 text-plum-900 placeholder:text-plum-500/50
+           transition-all duration-200
+           focus:outline-none focus:border-sakura-500 focus:ring-4 focus:ring-sakura-100;
+  }
+}

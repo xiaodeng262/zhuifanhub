@@ -1,0 +1,148 @@
+# ============================================================
+# 追番向导 · CI/CD
+# ------------------------------------------------------------
+# 流水线：
+#   1) build-and-push: 在 GitHub runner 上 docker buildx 出多 tag 镜像
+#                       推送到 ghcr.io/<owner>/zhuifanhub
+#   2) deploy:         SSH 到 VPS，写入 IMAGE_TAG 后 docker compose pull && up -d
+#
+# 触发：
+#   - push 到 main 分支自动跑
+#   - workflow_dispatch 手动触发，可填指定 tag 重新部署用于回滚
+#
+# 镜像 tag 策略：
+#   - latest         : 最新 main 构建，便于人工 docker pull 测试
+#   - sha-<shortsha> : 不可变标签，部署阶段实际写入服务器 .env 的就是它
+#                       回滚时只需把 IMAGE_TAG 改回旧 sha
+# ============================================================
+
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "重新部署指定 tag（默认部署本次构建结果）"
+        required: false
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/zhuifanhub
+
+jobs:
+  # ----------------------------------------------------------
+  # 阶段 1：构建并推送镜像
+  # ----------------------------------------------------------
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tags / labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short,prefix=sha-
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # 用 GitHub Actions cache 加速增量构建（npm ci / next build）
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # GHCR + 公网拉取均要求 amd64
+          platforms: linux/amd64
+
+  # ----------------------------------------------------------
+  # 阶段 2：SSH 上服务器拉新镜像并重启
+  # ----------------------------------------------------------
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve image tag to deploy
+        id: tag
+        # 手动触发且填了 image_tag 时用指定 tag（回滚场景），否则用本次构建的 sha tag
+        run: |
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            echo "value=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${{ needs.build-and-push.outputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: SSH deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          # 严格模式：脚本任一行失败立即退出，便于 Actions 报红
+          script: |
+            set -euo pipefail
+
+            APP_DIR="${{ secrets.DEPLOY_PATH }}"
+            cd "$APP_DIR"
+
+            # 1) 写入本次要部署的 tag 到 .env，让 compose 解析到正确镜像
+            #    用临时文件 + mv 保证原子替换，避免半写状态
+            grep -v '^IMAGE_TAG=' .env > .env.next || true
+            echo "IMAGE_TAG=${{ steps.tag.outputs.value }}" >> .env.next
+            mv .env.next .env
+
+            # 2) 登录 GHCR（私有镜像必需；公开镜像也无害）
+            echo "${{ secrets.GHCR_PULL_TOKEN }}" \
+              | docker login ghcr.io -u "${{ secrets.GHCR_PULL_USER }}" --password-stdin
+
+            # 3) 拉新镜像 + 平滑重启 app（postgres 不动）
+            docker compose -f docker-compose.prod.yml pull app
+            docker compose -f docker-compose.prod.yml up -d --no-deps app
+
+            # 4) 等 healthcheck 通过；超时则回退退出码，让 Actions 报失败
+            for i in $(seq 1 30); do
+              status=$(docker inspect -f '{{.State.Health.Status}}' zhuifanhub-app 2>/dev/null || echo starting)
+              echo "[$i] health=$status"
+              [ "$status" = "healthy" ] && exit 0
+              sleep 2
+            done
+            echo "app failed to become healthy within 60s" >&2
+            docker compose -f docker-compose.prod.yml logs --tail=200 app
+            exit 1
+
+      - name: Cleanup dangling images on server
+        if: success()
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            docker image prune -f

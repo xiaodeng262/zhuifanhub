@@ -1,0 +1,48 @@
+# ============================================================
+# Docker 构建上下文白名单的反面：让 docker build 只看到必要源码
+# ------------------------------------------------------------
+# 关键原则：
+#   1) 排除一切本机产物 (.next / node_modules / tsbuildinfo)，避免污染镜像
+#   2) 排除一切包含密钥的环境文件，防止 .env 泄进镜像层被 docker history 读出
+#   3) 排除大体积本地数据 (.data / 备份)，否则会拖慢 build context 上传
+# ============================================================
+
+# Git / IDE / OS
+.git
+.gitignore
+.gitattributes
+.github
+.vscode
+.idea
+.DS_Store
+*.swp
+
+# Node / Next 构建产物
+node_modules
+.next
+out
+*.tsbuildinfo
+coverage
+
+# 本地数据 & 备份（含 SQL dump，可能含真实数据）
+.data
+.data.backup-*
+.data.backup-db-*.sql
+public/uploads
+
+# 环境变量 - 一律不进镜像，运行时通过 compose env 注入
+.env
+.env.*
+!.env.example
+
+# 文档 / 杂项
+docs
+README.md
+*.md
+.claude
+.omx
+
+# Docker 自身
+Dockerfile
+.dockerignore
+docker-compose*.yml

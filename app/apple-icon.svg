@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+  <!-- Apple Touch Icon 180x180，背景奶白保留边距 -->
+  <rect width="180" height="180" rx="40" ry="40" fill="#fff9f3"/>
+  <rect x="18" y="18" width="144" height="144" rx="36" ry="36" fill="#ff5b97" stroke="#2d1b3d" stroke-width="10"/>
+  <path d="M90 135 C57 113 39 93 39 74 C39 59 50 48 63 48 C74 48 83 54 90 64 C97 54 106 48 117 48 C130 48 141 59 141 74 C141 93 123 113 90 135 Z" fill="#ffffff"/>
+  <path d="M141 24 L146 38 L160 43 L146 48 L141 62 L136 48 L122 43 L136 38 Z" fill="#ffcc00" stroke="#2d1b3d" stroke-width="4" stroke-linejoin="round"/>
+</svg>

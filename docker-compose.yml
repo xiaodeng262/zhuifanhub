@@ -1,0 +1,26 @@
+# 本地开发数据库
+# 业务动机：项目从 .data/*.json 迁到 Postgres，docker compose 一键启停，避免本机安装 Postgres
+# 端口：宿主机 5433 映射到容器 5432，规避本机 5432 已被其它 Postgres 占用
+# 数据持久化：命名 volume zhuifanhub_pgdata，docker compose down 不清数据
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: zhuifanhub-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zhuifanhub
+      POSTGRES_PASSWORD: zhuifanhub_dev
+      POSTGRES_DB: zhuifanhub
+    ports:
+      - "5433:5432"
+    volumes:
+      - zhuifanhub_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # 用 pg_isready 代替 TCP 探测，确保进程已接受连接，避免 prisma migrate 过早执行
+      test: ["CMD-SHELL", "pg_isready -U zhuifanhub -d zhuifanhub"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  zhuifanhub_pgdata:
