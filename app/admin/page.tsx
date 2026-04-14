@@ -4,6 +4,9 @@ import { isAdminUser } from "@/lib/auth/admin";
 import { listReports, reportStats } from "@/lib/store/reports";
 import { AdminClient } from "./AdminClient";
 
+// 强制动态渲染：管理后台依赖登录态 + 实时举报数据，禁止任何形式的静态化
+export const dynamic = "force-dynamic";
+
 /*
  * 后台管理页（Server Component）
  *

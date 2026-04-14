@@ -8,6 +8,9 @@ import { listReportsByUser } from "@/lib/store/reports";
 import { FloatingBackButton } from "@/app/components/FloatingBackButton";
 import { MeTabs } from "./MeTabs";
 
+// 强制动态渲染：个人中心依赖登录态 + 用户私有数据，禁止任何形式的静态化
+export const dynamic = "force-dynamic";
+
 /*
  * 个人中心 /me
  *

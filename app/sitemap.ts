@@ -1,6 +1,10 @@
 import type { MetadataRoute } from "next";
 import { prisma } from "@/lib/db";
 
+// 强制动态生成 sitemap：build 容器内无 DB 连接，否则会触发空查询并退化为残缺 sitemap
+// 让 sitemap 在每次 GET 请求时实时构造，配合 CDN 缓存即可
+export const dynamic = "force-dynamic";
+
 /*
  * sitemap.xml 生成
  *

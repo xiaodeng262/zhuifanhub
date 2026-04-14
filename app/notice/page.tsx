@@ -3,6 +3,9 @@ import { FloatingBackButton } from "@/app/components/FloatingBackButton";
 import { listNotices } from "@/lib/store/notices";
 import type { Notice } from "@/lib/types";
 
+// 强制动态渲染：公告列表实时查 DB，禁止 build 阶段静态预渲染
+export const dynamic = "force-dynamic";
+
 /*
  * 公告页 /notice
  *

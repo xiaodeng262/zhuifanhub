@@ -4,6 +4,10 @@ import { CategoryRail } from "./components/CategoryRail";
 import { listResources } from "@/lib/store/resources";
 import { Sparkles } from "lucide-react";
 
+// 强制动态渲染：本页直接 await prisma 查资源，build 容器内无 DB 连接，
+// 不加这一行 next build 会试图静态预渲染并因 prisma 连不上而失败
+export const dynamic = "force-dynamic";
+
 /*
  * 首页
  * 结构：

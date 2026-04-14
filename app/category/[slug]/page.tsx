@@ -6,6 +6,9 @@ import type { Category } from "@/lib/types";
 import { ResourceExplorer } from "@/app/components/ResourceExplorer";
 import { FloatingBackButton } from "@/app/components/FloatingBackButton";
 
+// 强制动态渲染：分类列表实时查 DB，禁止 build 阶段静态预渲染
+export const dynamic = "force-dynamic";
+
 /*
  * 分类详情页 v2 · 卡通 Pop
  * - 顶部大号 Mochiy Pop 标题 + 背景 emoji 装饰

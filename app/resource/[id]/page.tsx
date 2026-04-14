@@ -23,6 +23,9 @@ import { ResourceActions } from "./ResourceActions";
 import { CommentSection } from "./CommentSection";
 import { FollowAuthorButton } from "./FollowAuthorButton";
 
+// 强制动态渲染：资源详情依赖 [id] 动态段 + 实时统计 + 登录态，禁止 build 阶段预渲染
+export const dynamic = "force-dynamic";
+
 /*
  * 资源详情页（Server Component）
  *

@@ -3,6 +3,9 @@ import { listResources } from "@/lib/store/resources";
 import { ResourceCard } from "@/app/components/ResourceCard";
 import { FloatingBackButton } from "@/app/components/FloatingBackButton";
 
+// 强制动态渲染：搜索结果依赖 query 参数 + DB，禁止 build 阶段静态预渲染
+export const dynamic = "force-dynamic";
+
 /*
  * 搜索结果页 /search?q=...
  *
