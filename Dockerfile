@@ -35,9 +35,14 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # 关闭 next telemetry，避免构建时多余的网络请求
 ENV NEXT_TELEMETRY_DISABLED=1
-# 构建期占位的 DATABASE_URL：next build 会做静态分析，prisma client 在 import 时不会真连库
-# 但若代码里有顶层 await prisma.xxx 仍可能尝试连接，这里给个无害值兜底
+# ---------- 构建期占位环境变量 ----------
+# next build 的 "Collecting page data" 阶段会加载所有路由模块，
+# 任何在模块顶层读取环境变量并 throw 的代码都会在这里炸。
+# 真实的值会在 docker compose 启动容器时由 .env 注入，构建期占位不会泄露到运行时。
 ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
+# AUTH_SECRET 在 lib/auth/session.ts 模块顶层做 ≥16 字符 + production 校验
+# 这里给一段足够长的占位，骗过 build 阶段的校验
+ENV AUTH_SECRET="build-time-placeholder-not-a-real-secret"
 RUN npm run build
 
 # ---------- 阶段 3: runner ----------
