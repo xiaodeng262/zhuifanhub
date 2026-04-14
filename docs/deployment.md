@@ -56,42 +56,65 @@
 
 GitHub Actions 要 SSH 进你的服务器，得有一对**专用的 SSH 密钥**。**不要用你平时登录服务器的那把私钥**，给 Actions 单独发一把，将来不用了直接删掉就行。
 
-### 1.1 在 VPS 上创建部署用户（已有则跳过）
+> 📌 **为什么整个第一步都在 VPS 上做？**
+> SSH 密钥是「一对儿」，在哪台机器生成都行——只要公钥最后落在 VPS 的 `authorized_keys`、私钥最后贴进 GitHub Secret 即可。直接在 VPS 上生成可以省掉「ssh-copy-id 把公钥送上去」这一步，对新手最省事。
+
+### 1.1 创建部署用户（已有则跳过）
 
 ```bash
-# 用 root 登录后执行
+# 用 root SSH 登录 VPS 后执行
 adduser deploy                        # 输入密码即可，其它问题一路回车
 usermod -aG docker deploy             # 让 deploy 用户能直接用 docker 命令
-mkdir -p /home/deploy/.ssh
-chmod 700 /home/deploy/.ssh
-chown -R deploy:deploy /home/deploy/.ssh
 ```
 
-### 1.2 在 **本地电脑** 上生成专用密钥
+### 1.2 切换到 deploy 用户并生成密钥对
 
 ```bash
+# 仍然在 VPS 上，从 root 切到 deploy
+su - deploy
+
+# 生成专用密钥（一路回车，不要设密码）
 ssh-keygen -t ed25519 -C "github-actions-zhuifanhub" -f ~/.ssh/zhuifanhub_deploy -N ""
 ```
 
-执行后你会得到两个文件：
+执行后会得到两个文件，**都在 VPS 上**：
 
 - `~/.ssh/zhuifanhub_deploy`：**私钥**，等下要贴到 GitHub Secret 里
-- `~/.ssh/zhuifanhub_deploy.pub`：**公钥**，要写到服务器上
+- `~/.ssh/zhuifanhub_deploy.pub`：**公钥**，等下加到本机的授权列表
 
-### 1.3 把公钥写到服务器
+### 1.3 把公钥加入授权列表
 
 ```bash
-# 在本地电脑执行（IP 换成你的 VPS）
-ssh-copy-id -i ~/.ssh/zhuifanhub_deploy.pub deploy@your-server-ip
-
-# 如果 ssh-copy-id 没有，用这条等价命令：
-cat ~/.ssh/zhuifanhub_deploy.pub | ssh deploy@your-server-ip "cat >> ~/.ssh/authorized_keys"
+# 还在 deploy 用户身份下，在 VPS 上继续执行
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+cat ~/.ssh/zhuifanhub_deploy.pub >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
 ```
 
-### 1.4 验证密钥能登录
+这一步等于「告诉 VPS：拿着 zhuifanhub_deploy 这把私钥的人允许以 deploy 身份登录我」。
+
+### 1.4 把私钥内容打印出来准备贴到 GitHub
 
 ```bash
-ssh -i ~/.ssh/zhuifanhub_deploy deploy@your-server-ip "docker --version && docker compose version"
+cat ~/.ssh/zhuifanhub_deploy
+```
+
+终端会打印形如下面的内容：
+
+```
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACA8j+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+...（中间若干行）...
+-----END OPENSSH PRIVATE KEY-----
+```
+
+**整段全选**（包含首尾的 `BEGIN/END` 行）复制下来，先临时贴在你电脑的便签里，**等下第三步配置 `SSH_KEY` Secret 时就贴这段**。
+
+### 1.5 验证 deploy 用户能跑 docker
+
+```bash
+docker --version && docker compose version
 ```
 
 **预期输出**：
@@ -101,9 +124,15 @@ Docker version 24.x.x, build xxxxxxx
 Docker Compose version v2.x.x
 ```
 
-看到这两行就说明：① SSH 密钥能登录 ② deploy 用户能用 docker。继续下一步。
+看到这两行就说明 deploy 用户已经能用 docker 了。继续下一步。
 
-> ❗ 如果 docker 命令报 `permission denied`，说明 1.1 的 `usermod -aG docker deploy` 没生效。退出 SSH 重新登录一次即可（用户组变更要重新建会话）。
+> ❗ 如果报 `permission denied while trying to connect to the Docker daemon socket`，说明 1.1 的 `usermod -aG docker deploy` 没生效。**退出当前 shell 重新 `su - deploy` 一次**即可（用户组变更要重新建会话）。
+
+> 🔒 **安全小贴士（可选）**：私钥贴到 GitHub Secret 之后，如果你不需要在本机再用这把私钥，可以从 VPS 上把它删掉，公钥已经在 `authorized_keys` 里了：
+> ```bash
+> rm ~/.ssh/zhuifanhub_deploy ~/.ssh/zhuifanhub_deploy.pub
+> ```
+> 这样即便有人偷登 VPS，也拿不到 GitHub Actions 的私钥。
 
 ---
 
@@ -159,7 +188,7 @@ Login Succeeded
 
 私钥要**整段**复制，包括第一行 `-----BEGIN OPENSSH PRIVATE KEY-----` 和最后一行 `-----END OPENSSH PRIVATE KEY-----`，**末尾要保留换行**。
 
-在本地执行：
+如果第 1.4 步打印出来的内容你已经复制好了，直接贴进 GitHub 即可。如果窗口关掉了，回 VPS（deploy 用户身份）再来一次：
 
 ```bash
 cat ~/.ssh/zhuifanhub_deploy
@@ -626,9 +655,10 @@ docker run --rm -p 3000:3000 \
 打勾确认每一步都做了：
 
 - [ ] **第一步** 在 VPS 上创建 deploy 用户并加入 docker 组
-- [ ] **第一步** 在本地生成 `~/.ssh/zhuifanhub_deploy` 密钥对
-- [ ] **第一步** 把公钥写到 VPS 的 `authorized_keys`
-- [ ] **第一步** SSH 测试通过
+- [ ] **第一步** 在 VPS 上以 deploy 身份生成 `~/.ssh/zhuifanhub_deploy` 密钥对
+- [ ] **第一步** 把公钥追加到 `~/.ssh/authorized_keys`
+- [ ] **第一步** `cat ~/.ssh/zhuifanhub_deploy` 复制好私钥备用
+- [ ] **第一步** deploy 用户跑 `docker --version` 通过
 - [ ] **第二步** 在 GitHub 创建 PAT（仅勾 `read:packages`）
 - [ ] **第二步** 在 VPS 上 `docker login ghcr.io` 测试通过
 - [ ] **第三步** GitHub 仓库添加 7 个 Secret
