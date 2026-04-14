@@ -573,6 +573,29 @@ docker image prune -f          # 清理悬空镜像（workflow 已自动跑）
 
 ## 🆘 常见问题
 
+### Q0：deploy job 报 `Error: missing server host`
+
+**最常见的新人坑**：你把 7 个值配到了 **Variables** tab，但工作流读的是 **Secrets** tab。
+
+GitHub 的 Settings → Secrets and variables → Actions 页面顶部有两个 tab：
+
+```
+[ Secrets ]   [ Variables ]
+   ↑             ↑
+  ✅ 配这里      ❌ 不是这里
+```
+
+工作流里所有 `${{ secrets.SSH_HOST }}` 这种引用**只会**读 Secrets tab。配到 Variables 里的话，引用会解析为空字符串，drone-ssh 就报 `missing server host`。
+
+**怎么验证你点对了 tab**：进入页面后看顶部大标题——
+- 显示「**Repository secrets**」→ 对了
+- 显示「**Repository variables**」→ 退出去重选 tab
+
+**⚠️ 如果你已经把敏感凭据（`SSH_KEY` / `GHCR_PULL_TOKEN`）配到 Variables 里**：Variables 是**明文存储**，会出现在工作流日志里。**强烈建议立即轮换**：
+- VPS 上 `sed -i '/github-actions-zhuifanhub/d' ~/.ssh/authorized_keys` 撤销旧公钥，重新走第一步生成新密钥对
+- 去 <https://github.com/settings/tokens> 删掉旧 PAT，重新生成
+- 然后在正确的 Secrets tab 里重建
+
 ### Q1：Actions 里 `build-and-push` 红了，提示 `npm ci` 失败
 
 通常是依赖锁文件不一致。本地执行：
