@@ -11,10 +11,12 @@
 set -e
 
 echo "[entrypoint] running prisma migrate deploy ..."
-# 直接调用 prisma 入口文件，不走 node_modules/.bin/prisma 符号链接：
-# Docker 单文件 COPY symlink 时会跟随链接、把 .bin/prisma 拷成普通文件，
-# 导致 CLI 内部 __dirname 错位、找不到同目录的 prisma_schema_build_bg.wasm
+# 切到 /opt/migrator 跑迁移：那里有完整 node_modules，包含 prisma 的所有 transitive deps
+# (effect/empathic/fast-check/pure-rand 等被 npm hoist 的包)
+# 跑完切回 /app 由 CMD exec server.js
+cd /opt/migrator
 node node_modules/prisma/build/index.js migrate deploy
+cd /app
 
 echo "[entrypoint] starting next server ..."
 exec "$@"

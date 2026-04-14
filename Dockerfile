@@ -67,17 +67,14 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static     ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public           ./public
 
-# Prisma 迁移所需：CLI + schema + migrations 历史
-# standalone trace 默认不包含 prisma CLI，需手动补齐供 entrypoint 调用
-# 注意：故意不 COPY node_modules/.bin/prisma，因为它是 symlink → ../prisma/build/index.js
-#       Docker 单文件 COPY 默认会跟随符号链接、把 build/index.js 的内容
-#       复制为 .bin/prisma 普通文件，导致 prisma CLI 启动后 __dirname 指向 .bin/，
-#       找不到同目录应有的 prisma_schema_build_bg.wasm 而 ENOENT 崩溃。
-#       entrypoint.sh 直接用 node node_modules/prisma/build/index.js 调用即可绕开。
-COPY --from=builder --chown=nextjs:nodejs /app/prisma                   ./prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma      ./node_modules/prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma     ./node_modules/@prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma     ./node_modules/.prisma
+# ---------- 迁移工具：独立目录 + 完整 node_modules ----------
+# 业务动机：prisma CLI 通过 @prisma/config 间接依赖 effect / empathic / fast-check / pure-rand
+#          等顶层 hoisted 包，cherry-pick node_modules/prisma + @prisma 注定漏 transitive deps。
+# 设计取舍：放弃 cherry-pick，整段 COPY deps 阶段的完整 node_modules 到 /opt/migrator，
+#          专供 entrypoint 跑 prisma migrate deploy 用。app 主目录继续用 standalone trace 保持瘦身。
+# 镜像代价：约 +460MB。后续如需进一步压缩，可以在 deps 阶段拆 prod-only npm ci 再 COPY。
+COPY --from=deps    --chown=nextjs:nodejs /app/node_modules /opt/migrator/node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/prisma       /opt/migrator/prisma
 
 # 启动脚本：先跑 migrate deploy，再 exec 启动 server.js
 COPY --chown=nextjs:nodejs docker/entrypoint.sh /entrypoint.sh
