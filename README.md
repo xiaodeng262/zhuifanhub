@@ -147,6 +147,7 @@ GitHub Actions runner
      │
      └─ SSH 上 VPS
             ├─ 写入 IMAGE_TAG 到 .env
+            ├─ docker compose -f docker-compose.prod.yml up -d postgres
             ├─ docker compose -f docker-compose.prod.yml pull app
             ├─ docker compose ... up -d --no-deps app
             └─ 等 healthcheck 通过

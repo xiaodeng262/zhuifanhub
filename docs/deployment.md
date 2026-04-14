@@ -623,7 +623,7 @@ git push
 2. PAT 创建时勾的是 `read:packages` 吗？
 3. 仓库的 Package 可见性：去 <https://github.com/users/xiaodeng262/packages/container/zhuifanhub/settings>，下拉到底部 **Manage Actions access**，确保 `xiaodeng262/zhuifanhub` 仓库被加入并给了 `Write` 权限
 
-### Q4：`deploy` 里报 `app failed to become healthy within 60s`
+### Q4：`deploy` 里报 `app failed to become healthy within 120s`
 
 应用启动了但 healthcheck 没过。SSH 上服务器看日志：
 
@@ -632,9 +632,10 @@ docker compose -f docker-compose.prod.yml logs --tail=200 app
 ```
 
 最常见的原因：
+- 远端 `postgres` 容器根本没启动，或者启动后还没 ready，app 在 entrypoint 里先跑了 `prisma migrate deploy`，直接报 `P1001`
 - `.env` 里 `DATABASE_URL` 写错或 `POSTGRES_PASSWORD` 跟 compose 里不一致 → 应用连不上库
 - `AUTH_SECRET` 没填或太短（< 32 字符）→ 启动校验失败
-- 第一次跑迁移耗时较长 → 把 `.github/workflows/deploy.yml` 里 `for i in $(seq 1 30)` 改大点
+- 第一次跑迁移耗时较长 → 看当前仓库的 deploy workflow，默认已经先等待 `postgres` healthy，再给 app 120 秒启动窗口
 
 ### Q5：浏览器访问 502 Bad Gateway
 

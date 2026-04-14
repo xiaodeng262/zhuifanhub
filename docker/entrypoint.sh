@@ -15,7 +15,34 @@ echo "[entrypoint] running prisma migrate deploy ..."
 # (effect/empathic/fast-check/pure-rand 等被 npm hoist 的包)
 # 跑完切回 /app 由 CMD exec server.js
 cd /opt/migrator
-node node_modules/prisma/build/index.js migrate deploy
+
+attempt=1
+max_attempts="${PRISMA_DB_WAIT_MAX_ATTEMPTS:-30}"
+sleep_seconds="${PRISMA_DB_WAIT_SLEEP_SECONDS:-2}"
+
+while :; do
+  if output=$(node node_modules/prisma/build/index.js migrate deploy 2>&1); then
+    printf '%s\n' "$output"
+    break
+  fi
+
+  printf '%s\n' "$output" >&2
+
+  if printf '%s\n' "$output" | grep -q 'P1001:'; then
+    if [ "$attempt" -ge "$max_attempts" ]; then
+      echo "[entrypoint] database still unreachable after ${max_attempts} attempts" >&2
+      exit 1
+    fi
+
+    echo "[entrypoint] database not ready yet, retrying in ${sleep_seconds}s (${attempt}/${max_attempts}) ..." >&2
+    attempt=$((attempt + 1))
+    sleep "$sleep_seconds"
+    continue
+  fi
+
+  exit 1
+done
+
 cd /app
 
 echo "[entrypoint] starting next server ..."

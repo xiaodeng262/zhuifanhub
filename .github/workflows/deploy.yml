@@ -121,18 +121,34 @@ jobs:
             echo "${{ secrets.GHCR_PULL_TOKEN }}" \
               | docker login ghcr.io -u "${{ secrets.GHCR_PULL_USER }}" --password-stdin
 
-            # 3) 拉新镜像 + 平滑重启 app（postgres 不动）
+            # 3) 先确保 postgres 已启动并进入 healthy，再重启 app。
+            #    不能直接 up --no-deps app：那会显式跳过依赖，首次部署/库容器意外退出时
+            #    app 会在 postgres 不存在或未就绪时立刻跑 prisma migrate，最终 P1001 失败。
+            docker compose -f docker-compose.prod.yml up -d postgres
+            for i in $(seq 1 30); do
+              status=$(docker inspect -f '{{.State.Health.Status}}' zhuifanhub-postgres 2>/dev/null || echo starting)
+              echo "[postgres $i] health=$status"
+              [ "$status" = "healthy" ] && break
+              [ "$i" -eq 30 ] && {
+                echo "postgres failed to become healthy within 60s" >&2
+                docker compose -f docker-compose.prod.yml logs --tail=200 postgres
+                exit 1
+              }
+              sleep 2
+            done
+
+            # 4) 拉新镜像 + 平滑重启 app（postgres 已确认可用，不重复拉起依赖）
             docker compose -f docker-compose.prod.yml pull app
             docker compose -f docker-compose.prod.yml up -d --no-deps app
 
-            # 4) 等 healthcheck 通过；超时则回退退出码，让 Actions 报失败
-            for i in $(seq 1 30); do
+            # 5) 等 healthcheck 通过；首次迁移可能稍慢，给 120s 窗口
+            for i in $(seq 1 60); do
               status=$(docker inspect -f '{{.State.Health.Status}}' zhuifanhub-app 2>/dev/null || echo starting)
               echo "[$i] health=$status"
               [ "$status" = "healthy" ] && exit 0
               sleep 2
             done
-            echo "app failed to become healthy within 60s" >&2
+            echo "app failed to become healthy within 120s" >&2
             docker compose -f docker-compose.prod.yml logs --tail=200 app
             exit 1
 
